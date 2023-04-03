@@ -64,7 +64,7 @@ class SindySolver:
         self.library = np.hstack((self.library, self.states))
         lib_extended = []
         col_counter = 0
-        # Below is wrong. like 31 cols
+        # Below is wrong. like 31 cols but should be less
         for order in range(1,self.poly_order+1):
             for i in range(self.states.shape[1]):
                 for j in range(self.states.shape[1]):
