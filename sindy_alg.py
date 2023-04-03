@@ -64,13 +64,19 @@ class SindySolver:
         self.library = np.hstack((self.library, self.states))
         lib_extended = []
         col_counter = 0
+
         # Below is wrong. like 31 cols but should be less
-        for order in range(1,self.poly_order+1):
-            for i in range(self.states.shape[1]):
-                for j in range(self.states.shape[1]):
-                    temp = self.states[:, i] * self.states[:, j]  # new entry
-                    self.library = np.append(self.library, temp[...,np.newaxis],1)
-                    col_counter += 1
+        n_states = self.states.shape[1]
+        if self.poly_order > 1:
+            for order in range(2,self.poly_order+1):
+
+                for i in range(self.states.shape[1]):
+                    for j in range(i, self.states.shape[1]):
+                        temp = self.states[:, i] * self.states[:, j]  # new entry
+                        self.library = np.append(self.library, temp[...,np.newaxis],1)
+                        col_counter += 1
+        else:
+            print("Need to work with power greater than 2 using Combinations")
 
     def get_sparse_coefficients(self):
         pass
@@ -86,5 +92,6 @@ if __name__ == '__main__':
 
     lorenz_solver = SindySolver(states, derivatives, poly_order=2, threshold=0.1)
     lorenz_solver.get_library()
+    lorenz_solver.get_sparse_coefficients()
 
     print()
