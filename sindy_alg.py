@@ -1,14 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from abc import ABC, abstractmethod
 
 
-class DynamicSystem:
-    def __init__(self, x0, t0, dt, t_end, f):
-        self.x = x0
-        self.t = t0
+class DynamicSystem(ABC):
+    def __init__(self, dt, t_end, f):
+        self.x = None
+        self.t = None
         self.dt = dt
         self.t_end = t_end
 
+    @abstractmethod
     def f(self, x, t):
         pass
 
@@ -17,25 +19,24 @@ class DynamicSystem:
         self.t = self.t + self.dt
         return self.x
 
-    def run(self):
+    def run(self, x0, t0=0):
+        self.x = x0
+        self.t = t0
         xs = []
         while self.t < self.t_end:
             xs.append(self.step())
         return np.array(xs)
 
-    def get_derivative(self, states):  # save the trajectory and derivatives
-       return np.gradient(states, axis=0)/self.dt
-
-    @staticmethod
     def plot(self): # display in relevant space
         pass
 
-
+    def get_derivative(self, states):  # save the trajectory and derivatives
+       return np.gradient(states, axis=0)/self.dt
 
 
 class Lorenz(DynamicSystem):
-    def __init__(self, x0, t0, dt, t_end, f, sigma, rho, beta):
-        super().__init__(x0, t0, dt, t_end, f)
+    def __init__(self, dt, t_end, f, sigma, rho, beta):
+        super().__init__(dt, t_end, f)
         self.sigma = sigma
         self.rho = rho
         self.beta = beta
@@ -51,6 +52,7 @@ class Lorenz(DynamicSystem):
         N = xs.shape[0]
         ax = plt.figure().add_subplot(projection='3d')
         ax.scatter(xs[:, 0], xs[:, 1], xs[:, 2],c=np.arange(N)/N, cmap='jet', marker = '.', s=.5)
+
 
 class SindySolver:
     def __init__(self, states, derivatives, poly_order, threshold):
@@ -80,20 +82,6 @@ class SindySolver:
             print("Need to work with power greater than 2 using Combinations")
 
     def stls(self, thresh, max_n=5): # sequential thresholded least-squares
-        """
-        %% compute Sparse regression: sequential least squares
-        Xi = Theta\dXdt;  % initial guess: Least-squares
-        % lambda is our sparsification knob.
-        for k=1:10
-            smallinds = (abs(Xi)<lambda);      % find small coefficients
-            Xi(smallinds)=0;                   % and threshold
-            for ind = 1:n                      % n is state dimension
-                biginds =  ~smallinds(:,ind);
-                % Regress dynamics onto remaining terms to find sparse Xi
-                Xi(biginds,ind) = Theta(:,biginds)\dXdt(:,ind);
-            end
-        end
-        """
         Xi = np.linalg.lstsq(self.library, self.derivatives, rcond=None)[0]
         for k in range(max_n):
             plt.figure()
@@ -106,40 +94,29 @@ class SindySolver:
                 Xi[big_inds, ind] = np.linalg.lstsq(self.library[:, big_inds], self.derivatives[:, ind], rcond=None)[0]
         pass
 
-    def get_sparse_coefficients(self):
+    def get_sparse_coefficients(self, thresh  = 0.5):
         if self.library is None:
             self.get_library()
         # self.coefficients = np.linalg.lstsq(self.library, self.derivatives, rcond=None)[0]
-        self.coefficients = self.stls(.7)
+        self.coefficients = self.stls(thresh)
+
+    @staticmethod
+    def get_data(system, n_trials, system_params, initial_state_bounds):
+        states = []
+        derivatives = []
+        for i in range(n_trials):
+            x0 = np.random.uniform(initial_state_bounds[0],initial_state_bounds[1],3)
+            states.append(system.run(x0, t0=0))
+            derivatives.append(system.get_derivative(states[-1]))
+        return np.concatenate(states), np.concatenate(derivatives)
 
 
 if __name__ == '__main__':
 
-    lorenz = Lorenz(x0=np.array([1, 1, 1]), t0=0, dt=0.01, t_end=50, f=None, sigma=10, rho=28, beta=8 / 3)
-    states1 = lorenz.run()
-    derivatives1 = lorenz.get_derivative(states1)
-    lorenz = Lorenz(x0=np.array([-1, 2, 3]), t0=0, dt=0.01, t_end=50, f=None, sigma=10, rho=28, beta=8)
-    states2 = lorenz.run()
-    derivatives2 = lorenz.get_derivative(states2)
-    lorenz = Lorenz(x0=np.array([-5, 7.3, -12]), t0=0, dt=0.01, t_end=50, f=None, sigma=10, rho=28, beta=8)
-    states3 = lorenz.run()
-    derivatives3 = lorenz.get_derivative(states3)
-    lorenz = Lorenz(x0=np.array([-1, -1, -1]), t0=0, dt=0.01, t_end=50, f=None, sigma=10, rho=28, beta=8)
-    states4 = lorenz.run()
-    derivatives4 = lorenz.get_derivative(states4)
-    lorenz = Lorenz(x0=np.array([-3, -20, 30]), t0=0, dt=0.01, t_end=50, f=None, sigma=10, rho=28, beta=8)
-    states5 = lorenz.run()
-    derivatives5 = lorenz.get_derivative(states5)
-    lorenz = Lorenz(x0=np.array([-5.7, 7.3, -30]), t0=0, dt=0.01, t_end=50, f=None, sigma=10, rho=28, beta=8)
-    states6 = lorenz.run()
-    derivatives6 = lorenz.get_derivative(states6)
+    lorenz = Lorenz(dt=0.01, t_end=20, f=None, sigma=10, rho=28, beta=8)
+    states, derivatives = SindySolver.get_data(lorenz, 50, None, [-30,30])
 
-    states_comb = np.vstack((states1,states2,states3,states4,states5,states6))
-    derivatives_comb = np.vstack((derivatives1,derivatives2,derivatives3,derivatives4,derivatives5,derivatives6))
-    # Lorenz.plot(states3)
-    # plt.show()
-
-    lorenz_solver = SindySolver(states_comb, derivatives_comb, poly_order=2, threshold=0.5)
+    lorenz_solver = SindySolver(states, derivatives, poly_order=2, threshold=0.5)
     lorenz_solver.get_library()
     lorenz_solver.get_sparse_coefficients()
 
