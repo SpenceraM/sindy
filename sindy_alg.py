@@ -31,7 +31,7 @@ class DynamicSystem(ABC):
         pass
 
     def get_derivative(self, states):  # save the trajectory and derivatives
-       return np.gradient(states, axis=0)/self.dt
+       return np.gradient(states, axis=0, edge_order=2)/self.dt
 
 
 class Lorenz(DynamicSystem):
@@ -85,7 +85,7 @@ class SindySolver:
         Xi = np.linalg.lstsq(self.library, self.derivatives, rcond=None)[0]
         for k in range(max_n):
             plt.figure()
-            plt.imshow(Xi,cmap='jet',interpolation='none',aspect='auto')
+            plt.imshow(Xi,cmap='seismic',interpolation='none',aspect='auto',vmax=np.abs(np.max(Xi)),vmin=-np.abs(np.max(Xi)))
             plt.show(block=False)
             smallinds = np.abs(Xi) < thresh
             Xi[smallinds] = 0
@@ -101,20 +101,27 @@ class SindySolver:
         self.coefficients = self.stls(thresh)
 
     @staticmethod
-    def get_data(system, n_trials, system_params, initial_state_bounds):
+    def get_data(system, n_trials, initial_state_bounds, noise_std=0.1):
         states = []
         derivatives = []
         for i in range(n_trials):
             x0 = np.random.uniform(initial_state_bounds[0],initial_state_bounds[1],3)
             states.append(system.run(x0, t0=0))
             derivatives.append(system.get_derivative(states[-1]))
-        return np.concatenate(states), np.concatenate(derivatives)
+        states, derivatives = np.concatenate(states), np.concatenate(derivatives)
 
+        # add noise to states and derivatives
+        states = states + np.random.normal(0, noise_std, states.shape)
+        derivatives = derivatives + np.random.normal(0, noise_std, derivatives.shape)
+        return states, derivatives
 
 if __name__ == '__main__':
 
-    lorenz = Lorenz(dt=0.01, t_end=20, f=None, sigma=10, rho=28, beta=8)
-    states, derivatives = SindySolver.get_data(lorenz, 50, None, [-30,30])
+    lorenz = Lorenz(dt=0.0005, t_end=50, f=None, sigma=10, rho=28, beta=2)
+    # states = lorenz.run(np.array([1, 1, 1]), t0=0)
+    # lorenz.plot(states)
+    # plt.show(block=False)
+    states, derivatives = SindySolver.get_data(lorenz, 30, [-40,40], noise_std=0.1)
 
     lorenz_solver = SindySolver(states, derivatives, poly_order=2, threshold=0.5)
     lorenz_solver.get_library()
