@@ -9,6 +9,8 @@ class DynamicSystem(ABC):
         self.t = None
         self.dt = dt
         self.t_end = t_end
+        self.coefficient_names = None
+        self.state_names = None
 
     @abstractmethod
     def f(self, x, t):
@@ -33,6 +35,17 @@ class DynamicSystem(ABC):
     def get_derivative(self, states):  # save the trajectory and derivatives
        return np.gradient(states, axis=0, edge_order=2)/self.dt
 
+    def print_coefficients(self, coefficients):
+        if self.coefficient_names is None:
+            self.get_library()
+        print("Dynamic Equations:")
+        for state_var in range(coefficients.shape[1]):
+            eq_str = self.state_names[state_var] + " = "
+            for lib_var in range(coefficients.shape[0]):
+                if coefficients[lib_var,state_var] != 0:
+                    eq_str += str(round(coefficients[lib_var,state_var],2)) + self.coefficient_names[lib_var] +  ' + '
+                    # print(coefficients[i,j], self.coefficient_names[i], " = ", self.state_names[j])
+            print(eq_str[:-2])
 
 class Lorenz(DynamicSystem):
     def __init__(self, dt, t_end, f, sigma, rho, beta):
@@ -40,6 +53,9 @@ class Lorenz(DynamicSystem):
         self.sigma = sigma
         self.rho = rho
         self.beta = beta
+        self.coefficient_names = ['1', 'x', 'y', 'z', 'x^2', 'xy', 'xz', 'y^2', 'yz', 'z^2']
+        self.state_names = ['x', 'y', 'z']
+
 
     def f(self, x, t):
         x1 = x[0]  # x1 = x
@@ -61,6 +77,8 @@ class SindySolver:
         self.poly_order = poly_order
         self.threshold = threshold
         self.library = None
+        self.coefficients = None
+
 
     def get_library(self):
         self.library = np.ones([self.states.shape[0],1])
@@ -70,7 +88,7 @@ class SindySolver:
 
         # Below is wrong. like 31 cols but should be less
         n_states = self.states.shape[1]
-        if self.poly_order > 1:
+        if self.poly_order == 2:
             for order in range(2,self.poly_order+1):
 
                 for i in range(self.states.shape[1]):
@@ -79,20 +97,21 @@ class SindySolver:
                         self.library = np.append(self.library, temp[...,np.newaxis],1)
                         col_counter += 1
         else:
-            print("Need to work with power greater than 2 using Combinations")
+            print("Need to add functionality for powers greater than 2 using Combinations")
 
-    def stls(self, thresh, max_n=5): # sequential thresholded least-squares
+    def stls(self, thresh, max_n=5, plot_flag=False): # sequential thresholded least-squares
         Xi = np.linalg.lstsq(self.library, self.derivatives, rcond=None)[0]
         for k in range(max_n):
-            plt.figure()
-            plt.imshow(Xi,cmap='seismic',interpolation='none',aspect='auto',vmax=np.abs(np.max(Xi)),vmin=-np.abs(np.max(Xi)))
-            plt.show(block=False)
+            if plot_flag:
+                plt.figure()
+                plt.imshow(Xi,cmap='seismic',interpolation='none',aspect='auto',vmax=np.abs(np.max(Xi)),vmin=-np.abs(np.max(Xi)))
+                plt.show(block=False)
             smallinds = np.abs(Xi) < thresh
             Xi[smallinds] = 0
             for ind in range(self.states.shape[1]):
                 big_inds = ~smallinds[:, ind]
                 Xi[big_inds, ind] = np.linalg.lstsq(self.library[:, big_inds], self.derivatives[:, ind], rcond=None)[0]
-        pass
+        return Xi
 
     def get_sparse_coefficients(self, thresh  = 0.5):
         if self.library is None:
@@ -115,16 +134,18 @@ class SindySolver:
         derivatives = derivatives + np.random.normal(0, noise_std, derivatives.shape)
         return states, derivatives
 
+
 if __name__ == '__main__':
 
     lorenz = Lorenz(dt=0.0005, t_end=50, f=None, sigma=10, rho=28, beta=2)
     # states = lorenz.run(np.array([1, 1, 1]), t0=0)
     # lorenz.plot(states)
     # plt.show(block=False)
-    states, derivatives = SindySolver.get_data(lorenz, 30, [-40,40], noise_std=0.1)
+    states, derivatives = SindySolver.get_data(lorenz, 30, [-40,40], noise_std=0.0)
 
     lorenz_solver = SindySolver(states, derivatives, poly_order=2, threshold=0.5)
     lorenz_solver.get_library()
     lorenz_solver.get_sparse_coefficients()
-
+    lorenz.print_coefficients(lorenz_solver.coefficients)
+    # print(lorenz_solver.coefficients)
     print()
